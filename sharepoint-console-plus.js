@@ -31,6 +31,8 @@
 
   var KEY = "sp_link_console_v1";
   var TYPES = ["LIST", "LIBRARY", "VIEW", "PAGE", "SYSTEM", "LINK"];
+  // Default site to crawl for lists (WHD · Minimum Wage planning).
+  var DEFAULT_BASE = "https://usdol.sharepoint.com/sites/whd/mw/mwplanning/";
 
   /* ================= context detection ================= */
   var ctx = detectContext();
@@ -218,6 +220,7 @@
 
   var TABS = [
     { id: "links",   label: "Links",      rest: false, render: tabLinks },
+    { id: "gulp",    label: "Gulp",       rest: true,  render: tabGulp },
     { id: "overview",label: "Overview",   rest: true,  render: tabOverview },
     { id: "columns", label: "Columns",    rest: true,  render: tabColumns },
     { id: "views",   label: "Views",      rest: true,  render: tabViews },
@@ -347,6 +350,216 @@
         saveLinks(); renderLinks(); log("Imported " + added + " new link(s)");
       } catch (e) { log("Import failed — invalid JSON"); }
     });
+  }
+
+  /* ================= tab: Gulp =================
+     Crawl a site for its lists (and any list for its items), render the result
+     as a table, and save it for VS Code: Markdown (native preview), JSON, HTML.
+     Discovered list URLs are also saved into the Links catalog / JSON store. */
+  var lastGulp = null; // { title, cols, rows, kind }
+  function tabGulp(container) {
+    var wrap = el("div", "col"); wrap.style.gap = "10px";
+
+    container.appendChild(note("Paste a site URL to pull every list + library in it. Runs on your login, same tenant only."));
+
+    var base = el("input"); base.className = "search"; base.value = DEFAULT_BASE;
+    base.placeholder = "https://usdol.sharepoint.com/sites/whd/mw/mwplanning/";
+    container.appendChild(base);
+
+    var bar = el("div", "row");
+    bar.appendChild(btn("Gulp lists", function () { gulpLists(baseOf(base.value)); }));
+    var save = el("div", "row"); save.style.marginLeft = "auto";
+    var mdBtn = btn("Save .md", function () { saveGulp("md"); });
+    var jsonBtn = btn("Save .json", function () { saveGulp("json"); });
+    var htmlBtn = btn("Save .html", function () { saveGulp("html"); });
+    var csvBtn = btn("Save .csv", function () { saveGulp("csv"); });
+    [mdBtn, jsonBtn, htmlBtn, csvBtn].forEach(function (b) { b.classList.add("is-disabled"); save.appendChild(b); });
+    bar.appendChild(save);
+    container.appendChild(bar);
+
+    var out = el("div"); container.appendChild(out);
+
+    function enableSaves(on) {
+      [mdBtn, jsonBtn, htmlBtn, csvBtn].forEach(function (b) { b.classList.toggle("is-disabled", !on); });
+    }
+
+    function gulpLists(baseUrl) {
+      out.innerHTML = ""; out.appendChild(note("Reading lists from " + baseUrl + " …"));
+      enableSaves(false);
+      spGetAll(baseUrl + "/_api/web/lists?$select=Title,Id,BaseType,BaseTemplate,ItemCount,Hidden,DefaultViewUrl,LastItemModifiedDate&$top=500")
+        .then(function (lists) {
+          lists = lists.filter(function (l) { return !l.Hidden && l.BaseTemplate !== 100 && l.Title; });
+          lists.sort(function (a, b) { return a.Title.localeCompare(b.Title); });
+          var origin = originOf(baseUrl);
+          var savedCount = 0;
+          var rows = lists.map(function (l) {
+            var url = l.DefaultViewUrl ? origin + l.DefaultViewUrl : baseUrl;
+            if (addOne(url)) savedCount++;
+            return {
+              Title: l.Title,
+              Type: l.BaseType === 1 ? "Library" : "List",
+              Items: l.ItemCount,
+              Modified: (l.LastItemModifiedDate || "").replace("T", " ").replace("Z", ""),
+              Url: url,
+              _id: l.Id
+            };
+          });
+          if (savedCount) { saveLinks(); }
+          lastGulp = { title: "Lists in " + siteLabel(baseUrl), cols: ["Title", "Type", "Items", "Modified", "Url"], rows: rows, kind: "lists" };
+          renderTable(out, lastGulp, function (row) { gulpItems(baseUrl, row._id, row.Title); });
+          enableSaves(rows.length > 0);
+          log("Gulped " + rows.length + " lists · saved " + savedCount + " new URL(s) to Links");
+        })
+        .catch(function (e) {
+          out.innerHTML = "";
+          out.appendChild(note("Could not read lists: " + e.message + ". Run this on a page under the same tenant host (e.g. usdol.sharepoint.com)."));
+        });
+    }
+
+    function gulpItems(baseUrl, listId, title) {
+      out.innerHTML = ""; out.appendChild(note("Reading items from “" + title + "” …"));
+      enableSaves(false);
+      spGetAll(baseUrl + "/_api/web/lists(guid'" + listId + "')/items?$top=2000")
+        .then(function (items) {
+          var cols = items.length
+            ? Object.keys(items[0]).filter(function (k) { return k.indexOf("odata") < 0 && k.indexOf("@") < 0; })
+            : [];
+          var display = cols.slice(0, 14); // keep the table readable; JSON/CSV keep everything
+          var rows = items.map(function (it) {
+            var r = {}; cols.forEach(function (c) { r[c] = flatten(it[c]); }); return r;
+          });
+          lastGulp = { title: title + " — items", cols: display, allCols: cols, rows: rows, kind: "items" };
+          renderTable(out, { title: lastGulp.title, cols: display, rows: rows });
+          enableSaves(rows.length > 0);
+          var extra = cols.length > display.length ? " (showing " + display.length + "/" + cols.length + " columns; full set in JSON/CSV)" : "";
+          log("Gulped " + rows.length + " items" + extra);
+        })
+        .catch(function (e) { out.innerHTML = ""; out.appendChild(note("Could not read items: " + e.message)); });
+    }
+
+    function saveGulp(fmt) {
+      if (!lastGulp) { log("Nothing gulped yet."); return; }
+      var cols = lastGulp.allCols || lastGulp.cols;
+      var slug = lastGulp.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (fmt === "md") downloadBlob(mdTable(lastGulp.title, cols, lastGulp.rows), slug + ".md", "text/markdown");
+      else if (fmt === "json") downloadBlob(JSON.stringify(lastGulp.rows, null, 2), slug + ".json", "application/json");
+      else if (fmt === "csv") downloadBlob(toCsv(lastGulp.rows, cols), slug + ".csv", "text/csv");
+      else if (fmt === "html") downloadBlob(htmlTable(lastGulp.title, cols, lastGulp.rows), slug + ".html", "text/html");
+      log("Saved " + slug + "." + fmt);
+    }
+  }
+
+  /* base / origin helpers for gulp */
+  function baseOf(u) { return String(u || "").trim().replace(/\/+$/, ""); }
+  function originOf(u) { try { return new URL(u).origin; } catch (e) { return location.origin; } }
+  function siteLabel(u) {
+    var m = String(u).match(/\/(?:sites|teams)\/(.+)$/i);
+    return m ? m[1].replace(/\/+$/, "") : originOf(u).replace(/^https?:\/\//, "");
+  }
+  function flatten(v) {
+    if (v == null) return "";
+    if (typeof v === "object") return v.Title || v.Label || v.Url || v.Description || JSON.stringify(v);
+    return v;
+  }
+  /* add one URL to the Links store without a toast; returns true if newly added */
+  function addOne(url) {
+    for (var i = 0; i < links.length; i++) if (links[i].url === url) return false;
+    links.push(makeItem(url)); return true;
+  }
+
+  /* render an interactive table (click-to-sort); optional row-click callback */
+  function renderTable(mount, data, onRow) {
+    mount.innerHTML = "";
+    if (!data.rows.length) { mount.appendChild(note("Empty.")); return; }
+    var head = el("div", "grp-h"); head.textContent = data.title + " · " + data.rows.length + " rows";
+    mount.appendChild(head);
+    var scroller = el("div", "tbl-scroll");
+    var tbl = document.createElement("table"); tbl.className = "tbl";
+    var thead = document.createElement("thead"); var htr = document.createElement("tr");
+    var sortState = { col: null, dir: 1 };
+    data.cols.forEach(function (c) {
+      var th = document.createElement("th"); th.textContent = c;
+      th.onclick = function () {
+        sortState.dir = sortState.col === c ? -sortState.dir : 1; sortState.col = c;
+        data.rows.sort(function (a, b) {
+          var x = a[c], y = b[c];
+          var nx = parseFloat(x), ny = parseFloat(y);
+          if (!isNaN(nx) && !isNaN(ny)) return (nx - ny) * sortState.dir;
+          return String(x).localeCompare(String(y)) * sortState.dir;
+        });
+        body();
+      };
+      htr.appendChild(th);
+    });
+    thead.appendChild(htr); tbl.appendChild(thead);
+    var tb = document.createElement("tbody"); tbl.appendChild(tb);
+    function body() {
+      tb.innerHTML = "";
+      data.rows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        if (onRow) { tr.className = "clickable"; tr.onclick = function () { onRow(row); }; }
+        data.cols.forEach(function (c) {
+          var td = document.createElement("td");
+          var v = row[c] == null ? "" : String(row[c]);
+          if (/^https?:\/\//.test(v)) { var a = document.createElement("a"); a.href = v; a.target = "_blank"; a.textContent = v; a.className = "tlink"; td.appendChild(a); }
+          else td.textContent = v;
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+      });
+    }
+    body();
+    scroller.appendChild(tbl); mount.appendChild(scroller);
+    if (onRow) mount.appendChild(note("Tip: click a row to gulp that list's items."));
+  }
+
+  /* ---- table serializers (VS Code targets) ---- */
+  function mdCell(v) { return String(v == null ? "" : v).replace(/\|/g, "\\|").replace(/\r?\n/g, " "); }
+  function mdTable(title, cols, rows) {
+    var out = ["# " + title, "", "> " + rows.length + " rows · generated by SharePoint Console Plus", ""];
+    out.push("| " + cols.join(" | ") + " |");
+    out.push("| " + cols.map(function () { return "---"; }).join(" | ") + " |");
+    rows.forEach(function (r) { out.push("| " + cols.map(function (c) { return mdCell(flatten(r[c])); }).join(" | ") + " |"); });
+    return out.join("\n") + "\n";
+  }
+  function htmlTable(title, cols, rows) {
+    var esc2 = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    var head = cols.map(function (c) { return "<th>" + esc2(c) + "</th>"; }).join("");
+    var bodyRows = rows.map(function (r) {
+      return "<tr>" + cols.map(function (c) {
+        var v = flatten(r[c]);
+        var cell = /^https?:\/\//.test(v) ? '<a href="' + esc2(v) + '" target="_blank">' + esc2(v) + "</a>" : esc2(v);
+        return "<td>" + cell + "</td>";
+      }).join("") + "</tr>";
+    }).join("\n");
+    return '<!doctype html><meta charset="utf-8"><title>' + esc2(title) + '</title>' +
+      "<style>" +
+      "body{background:#0f0f0f;color:#e7ecf3;font:14px 'DM Sans',system-ui,'Segoe UI',sans-serif;margin:0;padding:24px}" +
+      "h1{font-size:22px;font-weight:700;letter-spacing:-.014em;margin:0 0 4px}" +
+      ".sub{color:#808080;font-size:13px;margin:0 0 16px}" +
+      "input{background:#202020;color:#fff;border:1px solid #303030;border-radius:8px;padding:8px 11px;font:inherit;width:280px;margin-bottom:12px}" +
+      "input:focus{outline:none;border-color:#5B9FEF}" +
+      "table{border-collapse:collapse;width:100%;font-size:13px}" +
+      "th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #232323;vertical-align:top}" +
+      "th{position:sticky;top:0;background:#141414;color:#a0a0a0;font-size:11px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;user-select:none}" +
+      "tr:hover td{background:#161616}" +
+      "a{color:#5B9FEF;text-decoration:none;font-family:'JetBrains Mono',Consolas,monospace;font-size:12px}" +
+      "a:hover{text-decoration:underline}" +
+      "td{font-family:'JetBrains Mono',Consolas,monospace;color:#d0d0d0}" +
+      "</style>" +
+      "<h1>" + esc2(title) + "</h1><p class=sub>" + rows.length + " rows · click a header to sort · filter below</p>" +
+      '<input id="f" placeholder="Filter rows…" oninput="filter()">' +
+      "<table id=t><thead><tr>" + head + "</tr></thead><tbody>" + bodyRows + "</tbody></table>" +
+      "<script>" +
+      "var t=document.getElementById('t');" +
+      "function filter(){var q=document.getElementById('f').value.toLowerCase();" +
+      "Array.prototype.forEach.call(t.tBodies[0].rows,function(r){r.style.display=r.textContent.toLowerCase().indexOf(q)>=0?'':'none';});}" +
+      "Array.prototype.forEach.call(t.tHead.rows[0].cells,function(th,i){th.onclick=function(){" +
+      "var rows=Array.prototype.slice.call(t.tBodies[0].rows);var asc=th._asc=!th._asc;" +
+      "rows.sort(function(a,b){var x=a.cells[i].textContent,y=b.cells[i].textContent;" +
+      "var nx=parseFloat(x),ny=parseFloat(y);var c=(!isNaN(nx)&&!isNaN(ny))?nx-ny:x.localeCompare(y);return asc?c:-c;});" +
+      "rows.forEach(function(r){t.tBodies[0].appendChild(r);});};});" +
+      "<\/script>";
   }
 
   /* ================= tab: Overview ================= */
@@ -686,6 +899,16 @@
     ".field .muted,.muted{color:var(--tc-fg-muted);font-size:11px}" +
     ".field pre{background:var(--tc-bg-elevated-high);border:1px solid var(--tc-border);border-radius:6px;padding:8px;overflow:auto;" +
       "font-family:var(--tc-font-mono);font-size:11px;color:var(--tc-fg-secondary-dim);margin:4px 0 0}" +
+    ".btn.is-disabled{opacity:.4;cursor:not-allowed;pointer-events:none}" +
+    ".tbl-scroll{overflow:auto;max-height:46vh;border:1px solid var(--tc-border);border-radius:8px}" +
+    ".tbl{border-collapse:collapse;width:100%;font-size:12px}" +
+    ".tbl th{position:sticky;top:0;background:var(--tc-bg-chrome);color:var(--tc-fg-tertiary);text-align:left;" +
+      "font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:6px 9px;cursor:pointer;user-select:none;white-space:nowrap;border-bottom:1px solid var(--tc-border)}" +
+    ".tbl th:hover{color:var(--tc-fg)}" +
+    ".tbl td{padding:6px 9px;border-bottom:1px solid var(--tc-border-subtle);color:var(--tc-fg-secondary-dim);" +
+      "font-family:var(--tc-font-mono);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".tbl tr.clickable{cursor:pointer}.tbl tr.clickable:hover td{background:var(--tc-bg-hover)}" +
+    ".tbl a.tlink{color:var(--tc-brand);text-decoration:none}.tbl a.tlink:hover{text-decoration:underline}" +
     ".log{padding:0 12px;max-height:0;overflow:hidden;color:var(--tc-green);font-size:12px;transition:max-height var(--tc-dur) var(--tc-ease),padding var(--tc-dur) var(--tc-ease)}" +
     ".log.show{max-height:40px;padding:8px 12px;border-top:1px solid var(--tc-border)}";
   }

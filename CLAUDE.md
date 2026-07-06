@@ -16,6 +16,10 @@ As of this writing the repo contains only `CLAUDE.md` and `SP.code-workspace`; t
 
 3. **SharePoint Console Plus** (`.js`, the merged tool) — the Toolkit with the Console folded in as a first **Links** tab. This is the canonical combined deliverable.
 
+### The Gulp tab (crawl → VS Code table)
+
+The snippet's **Gulp** tab crawls a site URL you paste (defaults to `DEFAULT_BASE`, the WHD `usdol.sharepoint.com/sites/whd/mw/mwplanning/` site) and pulls **every non-hidden list + library** via `<base>/_api/web/lists`; clicking a row then gulps that list's **items** via `.../items?$top=2000`. Results render as a click-to-sort table in the panel and export four ways for VS Code: **`.md`** (renders natively via VS Code's Markdown preview, `Ctrl+Shift+V` — the primary "table in VS Code" path, no extension), **`.json`**, **`.csv`**, and a self-contained sortable/filterable **`.html`**. Every discovered list URL is also written into the Links catalog (`saveLinks()`), so crawling feeds the persistent JSON store. Cross-site reads work only within the **same tenant host** the snippet is running on — it's still same-origin session-cookie auth, not headless.
+
 ## The one constraint that dictates the architecture
 
 The launcher *can* run as a standalone file, but the REST toolkit **cannot**. REST calls to `/_api/...` authenticate via the user's session cookies, which browsers only permit **same-origin, inside the SharePoint page itself**. Therefore the merged tool ships as a **DevTools Snippet** (or console paste), not an HTML file. A loader bookmarklet only works where the GCC CSP allows remote script, so the Snippet is the reliable path. On a non-SharePoint page the panel still opens but disables the REST tabs, leaving only Links active. Do not propose an architecture that ignores this — it is a browser security fact, not a preference.
