@@ -1,0 +1,7 @@
+{
+  "name": "sp-console-tests",
+  "private": true,
+  "description": "jsdom runtime test for the SharePoint console tools",
+  "scripts": { "test": "node gulp.test.js" },
+  "devDependencies": { "jsdom": "^29.1.1" }
+}

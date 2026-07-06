@@ -4,3 +4,7 @@
 # OS / editor cruft
 Thumbs.db
 .DS_Store
+
+# Node deps for the test harness
+node_modules/
+test/package-lock.json

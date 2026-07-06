@@ -388,7 +388,8 @@
       enableSaves(false);
       spGetAll(baseUrl + "/_api/web/lists?$select=Title,Id,BaseType,BaseTemplate,ItemCount,Hidden,DefaultViewUrl,LastItemModifiedDate&$top=500")
         .then(function (lists) {
-          lists = lists.filter(function (l) { return !l.Hidden && l.BaseTemplate !== 100 && l.Title; });
+          // Keep visible content lists/libraries; drop hidden system lists and catalog templates (>=116, e.g. app/theme catalogs).
+          lists = lists.filter(function (l) { return !l.Hidden && l.Title && !(l.BaseTemplate >= 116); });
           lists.sort(function (a, b) { return a.Title.localeCompare(b.Title); });
           var origin = originOf(baseUrl);
           var savedCount = 0;
