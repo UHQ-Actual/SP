@@ -1,0 +1,10 @@
+# My SharePoint links — one URL per line.
+# Paste these into the Intake box of sharepoint-console.html (or the Links tab
+# of the snippet) and they'll parse into cards automatically.
+# Lines starting with # are ignored by the parser (it only grabs http(s) URLs).
+
+# ---- Example (replace with your own) ----
+# https://YOURTENANT.sharepoint.com/sites/WHD/Lists/Enforcement%20Cases/AllItems.aspx
+# https://YOURTENANT.sharepoint.com/sites/WHD/Shared%20Documents/Forms/AllItems.aspx
+# https://YOURTENANT.sharepoint.us/teams/FieldOps/Lists/Inspections/AllItems.aspx
+

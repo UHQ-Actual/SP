@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SharePoint Console</title>
+<!-- Fonts load when the network allows (locked-down GCC falls back to system fonts). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ===== TrueCrimeDev tokens (inlined so the file stays self-contained) ===== */
+  .tc{
+    --tc-brand:#5B9FEF; --tc-brand-hover:#74B0F2; --tc-brand-active:#4A8BDB; --tc-brand-fg:#0f0f0f;
+    --tc-bg:#0f0f0f; --tc-bg-chrome:#141414; --tc-bg-card:#121212;
+    --tc-bg-elevated:#1a1a1a; --tc-bg-elevated-high:#202020; --tc-bg-hover:#252525; --tc-bg-active:#2a2a2a;
+    --tc-border-subtle:#232323; --tc-border:#303030; --tc-border-hover:#505050; --tc-border-strong:#707070;
+    --tc-fg:#ffffff; --tc-fg-secondary:#d0d0d0; --tc-fg-secondary-dim:#b0b0b0; --tc-fg-tertiary:#a0a0a0;
+    --tc-fg-muted:#808080; --tc-fg-muted-dim:#707070; --tc-fg-disabled:#4a4a4a; --tc-fg-placeholder:#606060;
+    --tc-blue:#5B9FEF; --tc-green:#7BC96F; --tc-amber:#F59E42; --tc-red:#DC3545; --tc-purple:#A855F7; --tc-cyan:#22D3EE;
+    --tc-tint-blue:#5B9FEF0F; --tc-tint-green:#7BC96F0F; --tc-tint-amber:#F59E420F;
+    --tc-tint-red:#DC35450F; --tc-tint-purple:#A855F70F; --tc-tint-cyan:#22D3EE0F;
+    --tc-ring-brand:0 0 0 3px #5B9FEF30; --tc-ring-red:0 0 0 3px #DC354530;
+    --tc-radius-sm:6px; --tc-radius-md:8px; --tc-radius-lg:12px; --tc-radius-xl:16px; --tc-radius-pill:999px;
+    --tc-space-1:4px; --tc-space-2:8px; --tc-space-3:12px; --tc-space-4:16px; --tc-space-5:20px;
+    --tc-space-6:24px; --tc-space-7:32px; --tc-space-8:40px;
+    --tc-shadow-md:0 4px 12px rgba(0,0,0,.4); --tc-shadow-lg:0 12px 32px rgba(0,0,0,.5);
+    --tc-font-sans:'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+    --tc-font-mono:'JetBrains Mono','Cascadia Code',Consolas,ui-monospace,monospace;
+    --tc-ease:cubic-bezier(0.2,0,0,1); --tc-dur-fast:120ms; --tc-dur:180ms;
+  }
+  .tc.tc-light{
+    --tc-brand:#2a6fc4; --tc-brand-hover:#245fa9; --tc-brand-active:#1e5490; --tc-brand-fg:#ffffff;
+    --tc-bg:#fafafa; --tc-bg-chrome:#ffffff; --tc-bg-card:#ffffff;
+    --tc-bg-elevated:#ffffff; --tc-bg-elevated-high:#f4f4f4; --tc-bg-hover:#f0f0f0; --tc-bg-active:#e8e8e8;
+    --tc-border-subtle:#ececec; --tc-border:#dcdcdc; --tc-border-hover:#b8b8b8; --tc-border-strong:#8a8a8a;
+    --tc-fg:#0f0f0f; --tc-fg-secondary:#2a2a2a; --tc-fg-secondary-dim:#3a3a3a; --tc-fg-tertiary:#5a5a5a;
+    --tc-fg-muted:#767676; --tc-fg-muted-dim:#8a8a8a; --tc-fg-disabled:#b8b8b8; --tc-fg-placeholder:#9a9a9a;
+    --tc-blue:#2a6fc4; --tc-green:#3f9a34; --tc-amber:#b7791f; --tc-red:#c0283a; --tc-purple:#8b3fd9; --tc-cyan:#0e8aa3;
+    --tc-tint-blue:#2a6fc414; --tc-tint-green:#3f9a3414; --tc-tint-amber:#b7791f14;
+    --tc-tint-red:#c0283a14; --tc-tint-purple:#8b3fd914; --tc-tint-cyan:#0e8aa314;
+    --tc-ring-brand:0 0 0 3px #2a6fc433; --tc-ring-red:0 0 0 3px #c0283a33;
+    --tc-shadow-md:0 4px 12px rgba(0,0,0,.10); --tc-shadow-lg:0 12px 32px rgba(0,0,0,.14);
+  }
+
+  /* ===== reset / base ===== */
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body.tc{
+    background:var(--tc-bg); color:var(--tc-fg);
+    font-family:var(--tc-font-sans); font-size:14px; line-height:1.55;
+    -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; min-height:100%;
+  }
+  ::selection{background:var(--tc-brand); color:var(--tc-brand-fg)}
+  :focus-visible{outline:none; box-shadow:var(--tc-ring-brand); border-radius:var(--tc-radius-sm)}
+
+  /* ===== chrome / header ===== */
+  header{
+    display:flex; align-items:center; gap:var(--tc-space-4);
+    padding:var(--tc-space-4) var(--tc-space-6);
+    background:var(--tc-bg-chrome); border-bottom:1px solid var(--tc-border);
+    position:sticky; top:0; z-index:5;
+  }
+  .wordmark{display:flex; align-items:baseline; gap:2px; font-family:var(--tc-font-mono); font-size:15px; letter-spacing:-0.01em}
+  .wordmark .a{color:var(--tc-fg); font-weight:500}
+  .wordmark .b{color:var(--tc-brand); font-weight:500}
+  .subtitle{color:var(--tc-fg-muted); font-size:12px; margin-left:2px}
+  .ticker{margin-left:auto; display:flex; gap:var(--tc-space-6); align-items:center}
+  .stat{display:flex; flex-direction:column; line-height:1.15}
+  .stat .k{font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--tc-fg-muted-dim)}
+  .stat .v{font-family:var(--tc-font-mono); font-size:18px; font-weight:500; color:var(--tc-fg); letter-spacing:-0.01em}
+  .status{display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--tc-fg-tertiary)}
+  .status::before{content:""; width:8px; height:8px; border-radius:var(--tc-radius-pill); background:var(--tc-green); flex:none}
+  .status.bad::before{background:var(--tc-red)}
+  .icon-btn{
+    background:transparent; border:1px solid var(--tc-border); color:var(--tc-fg-tertiary);
+    width:34px; height:34px; border-radius:var(--tc-radius-md); cursor:pointer; font-size:15px;
+    transition:background var(--tc-dur) var(--tc-ease),border-color var(--tc-dur) var(--tc-ease),color var(--tc-dur) var(--tc-ease);
+  }
+  .icon-btn:hover{background:var(--tc-bg-hover); border-color:var(--tc-border-hover); color:var(--tc-fg)}
+
+  main{padding:var(--tc-space-6); display:flex; flex-direction:column; gap:var(--tc-space-5); flex:1}
+  .bar{display:flex; gap:var(--tc-space-3); flex-wrap:wrap; align-items:center}
+
+  /* ===== inputs ===== */
+  input[type=search],textarea{
+    background:var(--tc-bg-elevated-high); color:var(--tc-fg); border:1px solid var(--tc-border);
+    border-radius:var(--tc-radius-md); padding:9px 11px; font:inherit; outline:none;
+    transition:border-color var(--tc-dur) var(--tc-ease),box-shadow var(--tc-dur) var(--tc-ease);
+  }
+  input[type=search]{flex:1; min-width:220px; font-size:13px}
+  input::placeholder,textarea::placeholder{color:var(--tc-fg-placeholder)}
+  input:focus,textarea:focus{border-color:var(--tc-brand); box-shadow:var(--tc-ring-brand)}
+  textarea{
+    width:100%; min-height:112px; resize:vertical;
+    font-family:var(--tc-font-mono); font-size:13px; line-height:1.5;
+  }
+
+  /* ===== buttons ===== */
+  button.btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:var(--tc-space-2);
+    background:var(--tc-bg-elevated); color:var(--tc-fg-secondary); border:1px solid var(--tc-border);
+    border-radius:var(--tc-radius-md); padding:9px 14px; font:inherit; font-size:13px; font-weight:600;
+    line-height:1; cursor:pointer; white-space:nowrap;
+    transition:background var(--tc-dur) var(--tc-ease),border-color var(--tc-dur) var(--tc-ease),color var(--tc-dur) var(--tc-ease);
+  }
+  button.btn:hover{background:var(--tc-bg-hover); border-color:var(--tc-border-hover); color:var(--tc-fg)}
+  button.btn:active{background:var(--tc-bg-active)}
+  button.btn.primary{background:var(--tc-brand); border-color:var(--tc-brand); color:var(--tc-brand-fg)}
+  button.btn.primary:hover{background:var(--tc-brand-hover); border-color:var(--tc-brand-hover); color:var(--tc-brand-fg)}
+  button.btn.ghost{background:transparent; border-color:transparent; color:var(--tc-fg-tertiary)}
+  button.btn.ghost:hover{background:var(--tc-bg-hover); color:var(--tc-fg)}
+  button.btn.sm{padding:6px 10px; font-size:11px; letter-spacing:0}
+
+  /* ===== intake ===== */
+  details.intake{background:var(--tc-bg-card); border:1px solid var(--tc-border); border-radius:var(--tc-radius-lg)}
+  details.intake summary{
+    cursor:pointer; padding:var(--tc-space-3) var(--tc-space-4); font-weight:600; user-select:none;
+    list-style:none; display:flex; align-items:center; gap:var(--tc-space-2); color:var(--tc-fg-secondary);
+  }
+  details.intake summary::-webkit-details-marker{display:none}
+  details.intake summary::before{content:"▸"; color:var(--tc-fg-muted); transition:transform var(--tc-dur) var(--tc-ease)}
+  details.intake[open] summary::before{transform:rotate(90deg)}
+  .intake .body{padding:0 var(--tc-space-4) var(--tc-space-4); display:flex; flex-direction:column; gap:var(--tc-space-3)}
+
+  /* ===== filter tags (dot + accent border; fills when pressed) ===== */
+  .chips{display:flex; gap:var(--tc-space-2); flex-wrap:wrap}
+  .chip{
+    --a:var(--tc-fg-muted);
+    display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:.4px;
+    padding:4px 11px; border-radius:var(--tc-radius-pill); border:1px solid var(--a);
+    background:transparent; color:var(--tc-fg-secondary-dim); cursor:pointer; line-height:1.6;
+    transition:background var(--tc-dur) var(--tc-ease),color var(--tc-dur) var(--tc-ease);
+  }
+  .chip::before{content:""; width:6px; height:6px; border-radius:var(--tc-radius-pill); background:var(--a); flex:none}
+  .chip.active{background:var(--a); color:var(--tc-brand-fg)}
+  .chip.active::before{background:var(--tc-brand-fg)}
+  .chip[data-t=LIST]{--a:var(--tc-blue)} .chip[data-t=LIBRARY]{--a:var(--tc-green)}
+  .chip[data-t=VIEW]{--a:var(--tc-amber)} .chip[data-t=PAGE]{--a:var(--tc-purple)}
+  .chip[data-t=SYSTEM]{--a:var(--tc-red)} .chip[data-t=LINK]{--a:var(--tc-cyan)}
+
+  /* ===== groups / cards ===== */
+  .group h2{
+    font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--tc-fg-muted-dim);
+    font-weight:600; margin:0 0 var(--tc-space-3); display:flex; align-items:center; gap:var(--tc-space-2);
+  }
+  .group h2 .count{
+    font-family:var(--tc-font-mono); color:var(--tc-fg-tertiary); background:var(--tc-bg-elevated);
+    border:1px solid var(--tc-border); border-radius:var(--tc-radius-pill); padding:0 8px; font-size:11px; letter-spacing:0;
+  }
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(272px,1fr)); gap:var(--tc-space-3)}
+  .card{
+    --a:var(--tc-cyan);
+    background:var(--tc-bg-card); border:1px solid var(--tc-border); border-radius:var(--tc-radius-lg);
+    padding:var(--tc-space-3) var(--tc-space-4); display:flex; flex-direction:column; gap:var(--tc-space-2);
+    transition:background var(--tc-dur) var(--tc-ease),border-color var(--tc-dur) var(--tc-ease);
+  }
+  .card:hover{background:var(--tc-bg-elevated); border-color:var(--tc-border-hover)}
+  .card[data-t=LIST]{--a:var(--tc-blue)} .card[data-t=LIBRARY]{--a:var(--tc-green)}
+  .card[data-t=VIEW]{--a:var(--tc-amber)} .card[data-t=PAGE]{--a:var(--tc-purple)}
+  .card[data-t=SYSTEM]{--a:var(--tc-red)} .card[data-t=LINK]{--a:var(--tc-cyan)}
+  .card .name{font-weight:600; font-size:15px; color:var(--tc-fg); outline:none; word-break:break-word; letter-spacing:-0.01em}
+  .card .name[contenteditable=true]{background:var(--tc-bg-elevated-high); border-radius:var(--tc-radius-sm); padding:2px 5px}
+  .card .meta{display:flex; gap:var(--tc-space-2); align-items:center; flex-wrap:wrap}
+  .tag{
+    display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:.4px;
+    padding:2px 9px; border-radius:var(--tc-radius-pill); border:1px solid var(--a); color:var(--tc-fg-secondary-dim); line-height:1.6;
+  }
+  .tag::before{content:""; width:6px; height:6px; border-radius:var(--tc-radius-pill); background:var(--a); flex:none}
+  .meta .view{font-size:12px; color:var(--tc-fg-muted)}
+  .card .url{
+    font-family:var(--tc-font-mono); font-size:12px; color:var(--tc-fg-muted); word-break:break-all;
+    max-height:2.6em; overflow:hidden;
+  }
+  .card .actions{display:flex; gap:var(--tc-space-2); margin-top:2px}
+
+  /* ===== empty / no-match ===== */
+  .empty{
+    border:1px dashed var(--tc-border); border-radius:var(--tc-radius-lg); padding:var(--tc-space-8);
+    text-align:center; color:var(--tc-fg-muted); font-size:13px;
+  }
+  .empty b{color:var(--tc-fg); font-weight:600}
+
+  /* ===== toast ===== */
+  .toast{
+    position:fixed; bottom:var(--tc-space-5); left:50%; transform:translateX(-50%);
+    background:var(--tc-bg-elevated-high); border:1px solid var(--tc-border-strong); color:var(--tc-fg);
+    padding:10px 16px; border-radius:var(--tc-radius-md); box-shadow:var(--tc-shadow-lg);
+    font-size:13px; opacity:0; pointer-events:none; transition:opacity var(--tc-dur) var(--tc-ease); z-index:20;
+  }
+  .toast.show{opacity:1}
+  a.hidden-dl{display:none}
+</style>
+</head>
+<body class="tc">
+<header>
+  <div class="wordmark"><span class="a">sharepoint</span><span class="b">.console</span></div>
+  <span class="subtitle">local link launcher · no network</span>
+  <div class="ticker">
+    <div class="stat"><span class="k">Links</span><span class="v" id="tLinks">0</span></div>
+    <div class="stat"><span class="k">Sites</span><span class="v" id="tSites">0</span></div>
+    <div class="stat"><span class="k">Types</span><span class="v" id="tTypes">0</span></div>
+    <span class="status" id="storeState"><span id="storeMsg">stored</span></span>
+    <button class="icon-btn" id="themeToggle" title="Toggle light / dark">◐</button>
+  </div>
+</header>
+<main>
+  <details class="intake" id="intake" open>
+    <summary>Intake &mdash; paste SharePoint URLs</summary>
+    <div class="body">
+      <textarea id="ta" placeholder="Paste one or many SharePoint URLs (any text with http links works)…&#10;https://contoso.sharepoint.com/sites/WHD/Lists/Enforcement%20Cases/AllItems.aspx"></textarea>
+      <div class="bar">
+        <button class="btn primary" id="add">Add links</button>
+        <button class="btn ghost" id="sample">Load sample links</button>
+        <button class="btn ghost" id="clear">Clear all</button>
+        <span style="flex:1"></span>
+        <button class="btn" id="export">Export JSON</button>
+        <button class="btn" id="importBtn">Import JSON</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none">
+      </div>
+    </div>
+  </details>
+
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search names, sites, URLs…">
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div id="board"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+<a class="hidden-dl" id="dl"></a>
+
+<script>
+(function(){
+  "use strict";
+  var KEY = "sp_link_console_v1";
+  var THEME_KEY = "sp_link_console_theme";
+  var TYPES = ["LIST","LIBRARY","VIEW","PAGE","SYSTEM","LINK"];
+  var state = { items: [], q: "", type: "ALL" };
+  var storageOk = true;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var board=$("board"), chips=$("chips"), toastEl=$("toast");
+
+  /* ---------- storage ---------- */
+  function load(){
+    try{ state.items = JSON.parse(localStorage.getItem(KEY)) || []; }
+    catch(e){ storageOk = false; state.items = []; }
+  }
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(state.items)); }
+    catch(e){ storageOk = false; reflectStorage(); }
+  }
+  function reflectStorage(){
+    $("storeState").className = "status" + (storageOk ? "" : " bad");
+    $("storeMsg").textContent = storageOk ? "stored" : "storage blocked — use Export";
+  }
+
+  /* ---------- theme ---------- */
+  function loadTheme(){
+    var t;
+    try{ t = localStorage.getItem(THEME_KEY); }catch(e){}
+    if(t === "light") document.body.classList.add("tc-light");
+  }
+  function toggleTheme(){
+    var light = document.body.classList.toggle("tc-light");
+    try{ localStorage.setItem(THEME_KEY, light ? "light" : "dark"); }catch(e){}
+  }
+
+  /* ---------- helpers ---------- */
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+  function pretty(s){
+    try{ s = decodeURIComponent(s); }catch(e){}
+    return s.replace(/[-_]+/g," ").replace(/\.aspx$/i,"").trim();
+  }
+  function titleCase(s){
+    return s.replace(/\w\S*/g,function(w){ return w.charAt(0).toUpperCase()+w.slice(1); });
+  }
+  function rid(){ return Math.random().toString(36).slice(2,10); }
+
+  /* ---------- the parser ---------- */
+  function parse(url){
+    var out = { url:url, site:"", name:"", type:"LINK", view:"" };
+    var u;
+    try{ u = new URL(url); }
+    catch(e){ out.site = "Unparsed"; out.name = url; return out; }
+
+    var parts = u.pathname.split("/").filter(Boolean);
+    var lower = parts.map(function(p){ return p.toLowerCase(); });
+
+    var si = lower.indexOf("sites"); if(si<0) si = lower.indexOf("teams");
+    if(si>=0 && parts[si+1]) out.site = titleCase(pretty(parts[si+1]));
+    else out.site = u.hostname;
+
+    var li = lower.indexOf("lists");
+    var fi = lower.indexOf("forms");
+    if(lower.indexOf("_layouts")>=0){
+      out.type = "SYSTEM";
+      out.name = lastAspx(parts) || "System page";
+    } else if(li>=0 && parts[li+1]){
+      var listName = titleCase(pretty(parts[li+1]));
+      var file = lower[li+2] || "";
+      if(file && file.indexOf("allitems")<0 && /\.aspx$/.test(file)){
+        out.type = "VIEW";
+        out.view = pretty(parts[li+2]);
+        out.name = listName + " · " + titleCase(out.view);
+      } else {
+        out.type = "LIST";
+        out.name = listName;
+      }
+    } else if(fi>=0 && parts[fi-1]){
+      out.type = "LIBRARY";
+      out.name = titleCase(pretty(parts[fi-1]));
+    } else if(lower.indexOf("sitepages")>=0){
+      out.type = "PAGE";
+      out.name = titleCase(lastAspx(parts) || "Page");
+    } else if(lastAspx(parts)){
+      out.type = "PAGE";
+      out.name = titleCase(lastAspx(parts));
+    } else {
+      out.type = "LINK";
+      out.name = parts.length ? titleCase(pretty(parts[parts.length-1])) : u.hostname;
+    }
+    if(!out.name) out.name = u.hostname;
+    return out;
+  }
+  function lastAspx(parts){
+    for(var i=parts.length-1;i>=0;i--){ if(/\.aspx$/i.test(parts[i])) return pretty(parts[i]); }
+    return "";
+  }
+  function makeItem(url){
+    var p = parse(url); p.id = rid(); p.label = ""; return p;
+  }
+  function displayName(it){ return it.label || it.name; }
+
+  /* ---------- intake ---------- */
+  function addUrls(text){
+    var found = (text.match(/https?:\/\/[^\s"'<>]+/gi) || [])
+      .map(function(s){ return s.replace(/[.,);]+$/,""); });
+    if(!found.length){ toast("No URLs found in that text."); return; }
+    var seen = {}; state.items.forEach(function(it){ seen[it.url]=1; });
+    var added = 0;
+    found.forEach(function(url){
+      if(seen[url]) return; seen[url]=1;
+      state.items.push(makeItem(url)); added++;
+    });
+    save(); render();
+    toast(added ? ("Added "+added+" link"+(added>1?"s":"")) : "All links already present.");
+  }
+
+  /* ---------- filtering ---------- */
+  function filtered(){
+    var q = state.q.toLowerCase();
+    return state.items.filter(function(it){
+      if(state.type!=="ALL" && it.type!==state.type) return false;
+      if(!q) return true;
+      return (displayName(it)+" "+it.site+" "+it.url).toLowerCase().indexOf(q)>=0;
+    });
+  }
+
+  /* ---------- render ---------- */
+  function render(){
+    $("tLinks").textContent = state.items.length;
+    var sites={}, types={};
+    state.items.forEach(function(it){ sites[it.site]=1; types[it.type]=1; });
+    $("tSites").textContent = Object.keys(sites).length;
+    $("tTypes").textContent = Object.keys(types).length;
+    reflectStorage();
+    renderChips();
+
+    board.innerHTML = "";
+    if(!state.items.length){
+      board.innerHTML = '<div class="empty"><b>No links yet.</b><br>Open Intake and paste your SharePoint URLs, or load the sample set.</div>';
+      return;
+    }
+    var rows = filtered();
+    if(!rows.length){
+      board.innerHTML = '<div class="empty">No links match this filter.</div>';
+      return;
+    }
+    var groups = {};
+    rows.forEach(function(it){ (groups[it.site]=groups[it.site]||[]).push(it); });
+    Object.keys(groups).sort().forEach(function(site){
+      var g = document.createElement("div"); g.className="group";
+      var h = document.createElement("h2");
+      h.innerHTML = esc(site) + ' <span class="count">'+groups[site].length+'</span>';
+      g.appendChild(h);
+      var grid = document.createElement("div"); grid.className="grid";
+      groups[site].forEach(function(it){ grid.appendChild(cardEl(it)); });
+      g.appendChild(grid);
+      board.appendChild(g);
+    });
+  }
+
+  function renderChips(){
+    var counts={ALL:state.items.length};
+    TYPES.forEach(function(t){ counts[t]=0; });
+    state.items.forEach(function(it){ counts[it.type]=(counts[it.type]||0)+1; });
+    var wanted = ["ALL"].concat(TYPES.filter(function(t){ return counts[t]; }));
+    chips.innerHTML = "";
+    wanted.forEach(function(t){
+      var c = document.createElement("button");
+      c.className = "chip"+(state.type===t?" active":"");
+      c.setAttribute("data-t",t);
+      c.setAttribute("aria-pressed", state.type===t ? "true":"false");
+      c.textContent = t+" ("+counts[t]+")";
+      c.onclick = function(){ state.type = t; render(); };
+      chips.appendChild(c);
+    });
+  }
+
+  function cardEl(it){
+    var card = document.createElement("div");
+    card.className="card"; card.setAttribute("data-t", it.type);
+
+    var name = document.createElement("div");
+    name.className="name"; name.textContent = displayName(it);
+    name.title = "Double-click to rename";
+    name.ondblclick = function(){
+      name.contentEditable="true"; name.focus();
+      document.execCommand("selectAll",false,null);
+    };
+    name.onblur = function(){
+      name.contentEditable="false";
+      var v = name.textContent.trim();
+      it.label = (v && v!==it.name) ? v : "";
+      name.textContent = displayName(it);
+      save();
+    };
+    name.onkeydown = function(e){ if(e.key==="Enter"){ e.preventDefault(); name.blur(); } };
+
+    var meta = document.createElement("div"); meta.className="meta";
+    meta.innerHTML = '<span class="tag">'+esc(it.type)+'</span>'+
+      (it.view? '<span class="view">'+esc(titleCase(it.view))+'</span>' : '');
+
+    var url = document.createElement("div"); url.className="url"; url.textContent = it.url;
+
+    var actions = document.createElement("div"); actions.className="actions";
+    var open = mkBtn("Open", function(){ window.open(it.url,"_blank","noopener"); });
+    var copy = mkBtn("Copy", function(){ copyText(it.url); });
+    var rm = mkBtn("Remove", function(){
+      state.items = state.items.filter(function(x){ return x.id!==it.id; });
+      save(); render();
+    });
+    actions.appendChild(open); actions.appendChild(copy); actions.appendChild(rm);
+
+    card.appendChild(name); card.appendChild(meta); card.appendChild(url); card.appendChild(actions);
+    return card;
+  }
+  function mkBtn(label,fn){ var b=document.createElement("button"); b.className="btn sm"; b.textContent=label; b.onclick=fn; return b; }
+
+  /* ---------- clipboard / io ---------- */
+  function copyText(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ toast("Copied"); },fallback);
+    } else fallback();
+    function fallback(){
+      var t=document.createElement("textarea"); t.value=text;
+      t.style.position="fixed"; t.style.opacity="0"; document.body.appendChild(t);
+      t.select(); try{ document.execCommand("copy"); toast("Copied"); }catch(e){ toast("Copy failed"); }
+      document.body.removeChild(t);
+    }
+  }
+  function exportJson(){
+    var blob = new Blob([JSON.stringify(state.items,null,2)],{type:"application/json"});
+    var a=$("dl"); a.href=URL.createObjectURL(blob); a.download="sharepoint-console-links.json";
+    a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);
+    toast("Exported "+state.items.length+" links");
+  }
+  function importJson(file){
+    var r=new FileReader();
+    r.onload=function(){
+      try{
+        var arr=JSON.parse(r.result);
+        if(!Array.isArray(arr)) throw 0;
+        var seen={}; state.items.forEach(function(it){ seen[it.url]=1; });
+        var added=0;
+        arr.forEach(function(it){
+          if(!it||!it.url||seen[it.url]) return; seen[it.url]=1;
+          if(!it.type||!it.id){ var p=makeItem(it.url); p.label=it.label||""; it=p; }
+          state.items.push(it); added++;
+        });
+        save(); render(); toast("Imported "+added+" new link"+(added===1?"":"s"));
+      }catch(e){ toast("Import failed — invalid JSON"); }
+    };
+    r.readAsText(file);
+  }
+
+  var toastTimer;
+  function toast(msg){
+    toastEl.textContent=msg; toastEl.classList.add("show");
+    clearTimeout(toastTimer); toastTimer=setTimeout(function(){ toastEl.classList.remove("show"); },1800);
+  }
+
+  /* ---------- sample ---------- */
+  var SAMPLE = [
+    "https://contoso.sharepoint.com/sites/WHD/Lists/Enforcement%20Cases/AllItems.aspx",
+    "https://contoso.sharepoint.com/sites/WHD/Lists/Enforcement%20Cases/Open%20Cases.aspx",
+    "https://contoso.sharepoint.com/sites/WHD/Shared%20Documents/Forms/AllItems.aspx",
+    "https://contoso.sharepoint.com/sites/WHD/SitePages/Team-Home.aspx",
+    "https://contoso.sharepoint.us/teams/FieldOps/Lists/Inspections/AllItems.aspx",
+    "https://contoso.sharepoint.us/teams/FieldOps/_layouts/15/settings.aspx"
+  ];
+
+  /* ---------- wiring ---------- */
+  $("add").onclick = function(){ addUrls($("ta").value); $("ta").value=""; };
+  $("sample").onclick = function(){ addUrls(SAMPLE.join("\n")); };
+  $("clear").onclick = function(){
+    if(!state.items.length) return;
+    if(confirm("Remove all "+state.items.length+" links?")){ state.items=[]; save(); render(); }
+  };
+  $("export").onclick = exportJson;
+  $("importBtn").onclick = function(){ $("importFile").click(); };
+  $("importFile").onchange = function(e){ if(e.target.files[0]) importJson(e.target.files[0]); e.target.value=""; };
+  $("q").oninput = function(e){ state.q=e.target.value; render(); };
+  $("themeToggle").onclick = toggleTheme;
+
+  loadTheme(); load(); render();
+})();
+</script>
+</body>
+</html>
