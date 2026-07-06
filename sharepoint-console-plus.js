@@ -368,19 +368,26 @@
 
     var bar = el("div", "row");
     bar.appendChild(btn("Gulp lists", function () { gulpLists(baseOf(base.value)); }));
-    var save = el("div", "row"); save.style.marginLeft = "auto";
+    bar.appendChild(btn("All lists' items", function () { gulpAllItems(baseOf(base.value)); }));
+    var openBtn = btn("This open list", function () { gulpOpenList(); });
+    if (!ctx.listId) { openBtn.classList.add("is-disabled"); openBtn.title = "Open a SharePoint list page first"; }
+    bar.appendChild(openBtn);
+    container.appendChild(bar);
+
+    var save = el("div", "row"); save.style.marginTop = "2px";
     var mdBtn = btn("Save .md", function () { saveGulp("md"); });
     var jsonBtn = btn("Save .json", function () { saveGulp("json"); });
     var htmlBtn = btn("Save .html", function () { saveGulp("html"); });
     var csvBtn = btn("Save .csv", function () { saveGulp("csv"); });
     [mdBtn, jsonBtn, htmlBtn, csvBtn].forEach(function (b) { b.classList.add("is-disabled"); save.appendChild(b); });
-    bar.appendChild(save);
-    container.appendChild(bar);
+    container.appendChild(save);
 
     var out = el("div"); container.appendChild(out);
 
     function enableSaves(on) {
-      [mdBtn, jsonBtn, htmlBtn, csvBtn].forEach(function (b) { b.classList.toggle("is-disabled", !on); });
+      [mdBtn, jsonBtn, htmlBtn].forEach(function (b) { b.classList.toggle("is-disabled", !on); });
+      // CSV only makes sense for a single-schema table, not the multi-list bundle.
+      csvBtn.classList.toggle("is-disabled", !on || !!(lastGulp && lastGulp.sections));
     }
 
     function gulpLists(baseUrl) {
@@ -438,10 +445,66 @@
         .catch(function (e) { out.innerHTML = ""; out.appendChild(note("Could not read items: " + e.message)); });
     }
 
+    // Pull items from the list currently open in the browser (uses page context).
+    function gulpOpenList() {
+      if (!ctx.listId) { log("No open list — this page isn't a SharePoint list."); return; }
+      gulpItems(ctx.webUrl, ctx.listId, ctx.listTitle || "Open list");
+    }
+
+    // Crawl every list, then pull each list's items into one sectioned bundle.
+    function gulpAllItems(baseUrl) {
+      out.innerHTML = ""; out.appendChild(note("Reading list catalog from " + baseUrl + " …"));
+      enableSaves(false);
+      spGetAll(baseUrl + "/_api/web/lists?$select=Title,Id,BaseType,BaseTemplate,ItemCount,Hidden&$top=500")
+        .then(function (lists) {
+          lists = lists.filter(function (l) { return !l.Hidden && l.Title && !(l.BaseTemplate >= 116); });
+          lists.sort(function (a, b) { return a.Title.localeCompare(b.Title); });
+          var sections = [], summary = [], i = 0;
+          function next() {
+            if (i >= lists.length) return finish();
+            var l = lists[i]; i++;
+            log("Gulping items " + i + "/" + lists.length + ": " + l.Title + " …");
+            return spGetAll(baseUrl + "/_api/web/lists(guid'" + l.Id + "')/items?$top=2000")
+              .then(function (items) {
+                var cols = items.length ? Object.keys(items[0]).filter(function (k) { return k.indexOf("odata") < 0 && k.indexOf("@") < 0; }) : [];
+                var rows = items.map(function (it) { var r = {}; cols.forEach(function (c) { r[c] = flatten(it[c]); }); return r; });
+                sections.push({ title: l.Title, cols: cols, rows: rows });
+                summary.push({ List: l.Title, Type: l.BaseType === 1 ? "Library" : "List", Items: rows.length });
+              })
+              .catch(function (e) { summary.push({ List: l.Title, Type: "?", Items: "error: " + e.message }); })
+              .then(next);
+          }
+          function finish() {
+            var total = sections.reduce(function (n, s) { return n + s.rows.length; }, 0);
+            lastGulp = {
+              title: "All lists in " + siteLabel(baseUrl),
+              cols: ["List", "Type", "Items"], rows: summary,
+              sections: sections, kind: "all"
+            };
+            renderTable(out, { title: lastGulp.title, cols: lastGulp.cols, rows: summary });
+            enableSaves(sections.length > 0);
+            log("Gulped " + total + " items across " + sections.length + " lists — save .md / .json / .html for the full bundle");
+          }
+          out.innerHTML = ""; out.appendChild(note("Pulling items from " + lists.length + " lists…"));
+          return next();
+        })
+        .catch(function (e) { out.innerHTML = ""; out.appendChild(note("Could not read lists: " + e.message)); });
+    }
+
     function saveGulp(fmt) {
       if (!lastGulp) { log("Nothing gulped yet."); return; }
-      var cols = lastGulp.allCols || lastGulp.cols;
       var slug = lastGulp.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (lastGulp.sections) { // multi-list bundle
+        if (fmt === "md") downloadBlob(mdSections(lastGulp.title, lastGulp.sections), slug + ".md", "text/markdown");
+        else if (fmt === "html") downloadBlob(htmlSections(lastGulp.title, lastGulp.sections), slug + ".html", "text/html");
+        else if (fmt === "json") {
+          var obj = {}; lastGulp.sections.forEach(function (s) { obj[s.title] = s.rows; });
+          downloadBlob(JSON.stringify(obj, null, 2), slug + ".json", "application/json");
+        } else { log("CSV isn't available for the multi-list bundle — use .json / .md / .html."); return; }
+        log("Saved " + slug + "." + fmt + " (" + lastGulp.sections.length + " lists)");
+        return;
+      }
+      var cols = lastGulp.allCols || lastGulp.cols;
       if (fmt === "md") downloadBlob(mdTable(lastGulp.title, cols, lastGulp.rows), slug + ".md", "text/markdown");
       else if (fmt === "json") downloadBlob(JSON.stringify(lastGulp.rows, null, 2), slug + ".json", "application/json");
       else if (fmt === "csv") downloadBlob(toCsv(lastGulp.rows, cols), slug + ".csv", "text/csv");
@@ -523,24 +586,47 @@
     rows.forEach(function (r) { out.push("| " + cols.map(function (c) { return mdCell(flatten(r[c])); }).join(" | ") + " |"); });
     return out.join("\n") + "\n";
   }
-  function htmlTable(title, cols, rows) {
-    var esc2 = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
-    var head = cols.map(function (c) { return "<th>" + esc2(c) + "</th>"; }).join("");
-    var bodyRows = rows.map(function (r) {
+  function mdSections(title, sections) {
+    var out = ["# " + title, "", "> " + sections.length + " lists · generated by SharePoint Console Plus", ""];
+    sections.forEach(function (s) {
+      out.push("## " + s.title + "  (" + s.rows.length + " rows)", "");
+      if (!s.rows.length) { out.push("_empty_", ""); return; }
+      out.push("| " + s.cols.join(" | ") + " |");
+      out.push("| " + s.cols.map(function () { return "---"; }).join(" | ") + " |");
+      s.rows.forEach(function (r) { out.push("| " + s.cols.map(function (c) { return mdCell(flatten(r[c])); }).join(" | ") + " |"); });
+      out.push("");
+    });
+    return out.join("\n") + "\n";
+  }
+  function htmlSections(title, sections) {
+    var body = sections.map(function (s) {
+      return "<h2>" + escHtml(s.title) + " <small>" + s.rows.length + " rows</small></h2>" +
+        (s.rows.length ? tableFragment(s.cols, s.rows) : "<p class=sub>empty</p>");
+    }).join("\n");
+    return htmlDoc(title, sections.length + " lists · click a header to sort", body);
+  }
+  function escHtml(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function tableFragment(cols, rows) {
+    var head = cols.map(function (c) { return "<th>" + escHtml(c) + "</th>"; }).join("");
+    var body = rows.map(function (r) {
       return "<tr>" + cols.map(function (c) {
         var v = flatten(r[c]);
-        var cell = /^https?:\/\//.test(v) ? '<a href="' + esc2(v) + '" target="_blank">' + esc2(v) + "</a>" : esc2(v);
+        var cell = /^https?:\/\//.test(v) ? '<a href="' + escHtml(v) + '" target="_blank">' + escHtml(v) + "</a>" : escHtml(v);
         return "<td>" + cell + "</td>";
       }).join("") + "</tr>";
     }).join("\n");
-    return '<!doctype html><meta charset="utf-8"><title>' + esc2(title) + '</title>' +
+    return '<table class="t"><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table>";
+  }
+  function htmlDoc(title, sub, bodyHtml) {
+    return '<!doctype html><meta charset="utf-8"><title>' + escHtml(title) + '</title>' +
       "<style>" +
       "body{background:#0f0f0f;color:#e7ecf3;font:14px 'DM Sans',system-ui,'Segoe UI',sans-serif;margin:0;padding:24px}" +
       "h1{font-size:22px;font-weight:700;letter-spacing:-.014em;margin:0 0 4px}" +
+      "h2{font-size:16px;font-weight:600;margin:24px 0 6px}h2 small{color:#808080;font-weight:400;font-size:12px}" +
       ".sub{color:#808080;font-size:13px;margin:0 0 16px}" +
       "input{background:#202020;color:#fff;border:1px solid #303030;border-radius:8px;padding:8px 11px;font:inherit;width:280px;margin-bottom:12px}" +
       "input:focus{outline:none;border-color:#5B9FEF}" +
-      "table{border-collapse:collapse;width:100%;font-size:13px}" +
+      "table{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:8px}" +
       "th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #232323;vertical-align:top}" +
       "th{position:sticky;top:0;background:#141414;color:#a0a0a0;font-size:11px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;user-select:none}" +
       "tr:hover td{background:#161616}" +
@@ -548,19 +634,23 @@
       "a:hover{text-decoration:underline}" +
       "td{font-family:'JetBrains Mono',Consolas,monospace;color:#d0d0d0}" +
       "</style>" +
-      "<h1>" + esc2(title) + "</h1><p class=sub>" + rows.length + " rows · click a header to sort · filter below</p>" +
+      "<h1>" + escHtml(title) + "</h1><p class=sub>" + escHtml(sub) + " · filter below</p>" +
       '<input id="f" placeholder="Filter rows…" oninput="filter()">' +
-      "<table id=t><thead><tr>" + head + "</tr></thead><tbody>" + bodyRows + "</tbody></table>" +
+      bodyHtml +
       "<script>" +
-      "var t=document.getElementById('t');" +
       "function filter(){var q=document.getElementById('f').value.toLowerCase();" +
-      "Array.prototype.forEach.call(t.tBodies[0].rows,function(r){r.style.display=r.textContent.toLowerCase().indexOf(q)>=0?'':'none';});}" +
+      "Array.prototype.forEach.call(document.querySelectorAll('table.t'),function(t){" +
+      "Array.prototype.forEach.call(t.tBodies[0].rows,function(r){r.style.display=r.textContent.toLowerCase().indexOf(q)>=0?'':'none';});});}" +
+      "Array.prototype.forEach.call(document.querySelectorAll('table.t'),function(t){" +
       "Array.prototype.forEach.call(t.tHead.rows[0].cells,function(th,i){th.onclick=function(){" +
       "var rows=Array.prototype.slice.call(t.tBodies[0].rows);var asc=th._asc=!th._asc;" +
       "rows.sort(function(a,b){var x=a.cells[i].textContent,y=b.cells[i].textContent;" +
       "var nx=parseFloat(x),ny=parseFloat(y);var c=(!isNaN(nx)&&!isNaN(ny))?nx-ny:x.localeCompare(y);return asc?c:-c;});" +
-      "rows.forEach(function(r){t.tBodies[0].appendChild(r);});};});" +
+      "rows.forEach(function(r){t.tBodies[0].appendChild(r);});};});});" +
       "<\/script>";
+  }
+  function htmlTable(title, cols, rows) {
+    return htmlDoc(title, rows.length + " rows · click a header to sort", tableFragment(cols, rows));
   }
 
   /* ================= tab: Overview ================= */

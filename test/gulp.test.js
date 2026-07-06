@@ -87,6 +87,39 @@ const stubFetch = (url) => {
     ok(/\|\s*Id\s*\|/.test(md), "markdown has header row");
     ok(/\|\s*---\s*\|/.test(md), "markdown has separator row (VS Code preview)"); }
 
+  // ---- "This open list" (uses page context, no crawl needed) ----
+  gulpTab.click(); // re-render tab fresh
+  const openBtn = [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="This open list");
+  ok(!!openBtn, "'This open list' button present");
+  ok(!openBtn.classList.contains("is-disabled"), "'This open list' enabled when a list is open (ctx.listId)");
+  openBtn.click(); await wait(60);
+  ok(root.querySelectorAll(".tbl tbody tr").length===2, "open-list gulp rendered its items (got "+root.querySelectorAll(".tbl tbody tr").length+")");
+
+  // ---- "All lists' items" bulk pull → sectioned bundle ----
+  const allBtn = [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="All lists' items");
+  ok(!!allBtn, "'All lists' items' button present");
+  allBtn.click(); await wait(120);
+  const sumRows = root.querySelectorAll(".tbl tbody tr");
+  ok(sumRows.length===2, "bulk pull summarized 2 content lists (got "+sumRows.length+")");
+  const sumHead = [...root.querySelector(".tbl thead tr").cells].map(c=>c.textContent).join(",");
+  ok(sumHead==="List,Type,Items", "bulk summary columns: "+sumHead);
+  // CSV disabled for the multi-list bundle; md/json/html enabled
+  const csvBtn2 = [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Save .csv");
+  const jsonBtn2 = [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Save .json");
+  ok(csvBtn2.classList.contains("is-disabled"), "CSV disabled for multi-list bundle");
+  ok(!jsonBtn2.classList.contains("is-disabled"), "JSON enabled for multi-list bundle");
+  // JSON bundle is keyed by list title, each an array of item rows
+  lastBlob=null; jsonBtn2.click(); await wait(20);
+  ok(!!lastBlob, "bundle .json produced a Blob");
+  if(lastBlob){ const obj=JSON.parse(await lastBlob.text());
+    const keys=Object.keys(obj);
+    ok(keys.length===2 && Array.isArray(obj[keys[0]]), "bundle JSON keyed by list → item arrays: "+keys.join("|"));
+    ok(obj[keys[0]].length===2, "each list section carries its items"); }
+  // MD bundle has one section (## heading) per list
+  lastBlob=null; [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Save .md").click(); await wait(20);
+  if(lastBlob){ const md=await lastBlob.text();
+    ok((md.match(/^## /gm)||[]).length===2, "bundle .md has a section per list"); }
+
   win.__SPCP.toggle(); ok(hostEl.style.display==="none", "toggle hides panel");
   win.__SPCP.toggle(); ok(hostEl.style.display==="block", "toggle re-shows panel");
 

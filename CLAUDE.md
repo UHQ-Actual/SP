@@ -18,7 +18,13 @@ As of this writing the repo contains only `CLAUDE.md` and `SP.code-workspace`; t
 
 ### The Gulp tab (crawl → VS Code table)
 
-The snippet's **Gulp** tab crawls a site URL you paste (defaults to `DEFAULT_BASE`, the WHD `usdol.sharepoint.com/sites/whd/mw/mwplanning/` site) and pulls **every non-hidden list + library** via `<base>/_api/web/lists`; clicking a row then gulps that list's **items** via `.../items?$top=2000`. Results render as a click-to-sort table in the panel and export four ways for VS Code: **`.md`** (renders natively via VS Code's Markdown preview, `Ctrl+Shift+V` — the primary "table in VS Code" path, no extension), **`.json`**, **`.csv`**, and a self-contained sortable/filterable **`.html`**. Every discovered list URL is also written into the Links catalog (`saveLinks()`), so crawling feeds the persistent JSON store. Cross-site reads work only within the **same tenant host** the snippet is running on — it's still same-origin session-cookie auth, not headless.
+The snippet's **Gulp** tab crawls a site URL you paste (defaults to `DEFAULT_BASE`, the WHD `usdol.sharepoint.com/sites/whd/mw/mwplanning/` site). Four actions:
+- **Gulp lists** — every non-hidden list + library via `<base>/_api/web/lists`; each row is clickable to gulp that list's items.
+- **This open list** — gulps the items of the list currently open in the browser, straight from `window._spPageContextInfo` (`ctx.listId`); the button disables itself when the page isn't a list.
+- **All lists' items** — walks every list sequentially and pulls each one's items into a single **sectioned bundle** (`lastGulp.sections`), with a summary table of list → row count.
+- A single list/items gulp exports **`.md`** (native VS Code Markdown preview, `Ctrl+Shift+V`), **`.json`**, **`.csv`**, and a self-contained sortable/filterable **`.html`**; the multi-list bundle exports `.md` (one `##` section per list), `.json` (object keyed by list title → item rows), and `.html` (section per list) — **CSV is disabled for the bundle** since schemas differ per list.
+
+Every discovered list URL is also written into the Links catalog (`saveLinks()`), so crawling feeds the persistent JSON store. The single- and multi-list HTML exports share one `htmlDoc()` shell (`escHtml` / `tableFragment` helpers). Cross-site reads work only within the **same tenant host** the snippet is running on — same-origin session-cookie auth, not headless. `test/gulp.test.js` boots the snippet in jsdom with mocked REST and asserts all of this (37 checks); run `cd test && npm i && node gulp.test.js`.
 
 ## The one constraint that dictates the architecture
 
