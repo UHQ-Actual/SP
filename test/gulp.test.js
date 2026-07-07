@@ -120,6 +120,37 @@ const stubFetch = (url) => {
   if(lastBlob){ const md=await lastBlob.text();
     ok((md.match(/^## /gm)||[]).length===2, "bundle .md has a section per list"); }
 
+  // ---- direct-write export folder (File System Access API) ----
+  const written = {};
+  let failWrite = false;
+  win.showDirectoryPicker = () => Promise.resolve({
+    name: "gulps",
+    getFileHandle: (n) => failWrite ? Promise.reject(new Error("gone")) : Promise.resolve({
+      createWritable: () => Promise.resolve({
+        write: (t) => { written[n] = t; return Promise.resolve(); },
+        close: () => Promise.resolve()
+      })
+    })
+  });
+  gulpTab.click(); // re-render so the tab sees showDirectoryPicker support
+  const dirBtn = [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Set export folder");
+  ok(!!dirBtn && !dirBtn.classList.contains("is-disabled"), "'Set export folder' present + enabled when API supported");
+  dirBtn.click(); await wait(20);
+  ok(dirBtn.textContent==="Folder: gulps", "button shows picked folder: "+dirBtn.textContent);
+  const dlBtn = [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Use downloads");
+  ok(!!dlBtn && dlBtn.style.display!=="none", "'Use downloads' revert button revealed");
+  lastBlob=null;
+  [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Save .json").click(); await wait(30);
+  const wkeys = Object.keys(written);
+  ok(wkeys.length===1 && wkeys[0].endsWith(".json"), "export written into folder: "+wkeys.join("|"));
+  ok(lastBlob===null, "no download when folder write succeeds");
+  if(wkeys.length){ const obj=JSON.parse(written[wkeys[0]]);
+    ok(Object.keys(obj).length===2, "folder-written JSON is the full bundle"); }
+  failWrite = true; lastBlob=null;
+  [...root.querySelectorAll(".body .btn")].find(b=>b.textContent==="Save .md").click(); await wait(30);
+  ok(!!lastBlob, "write failure falls back to download");
+  ok(dirBtn.textContent==="Set export folder", "folder cleared after failed write");
+
   win.__SPCP.toggle(); ok(hostEl.style.display==="none", "toggle hides panel");
   win.__SPCP.toggle(); ok(hostEl.style.display==="block", "toggle re-shows panel");
 

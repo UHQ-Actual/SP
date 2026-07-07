@@ -357,6 +357,8 @@
      as a table, and save it for VS Code: Markdown (native preview), JSON, HTML.
      Discovered list URLs are also saved into the Links catalog / JSON store. */
   var lastGulp = null; // { title, cols, rows, kind }
+  var exportDir = null; // FileSystemDirectoryHandle — when set, every export writes here instead of downloading
+  var onExportDirChange = null; // lets the Gulp tab refresh its folder indicator when a write fails
   function tabGulp(container) {
     var wrap = el("div", "col"); wrap.style.gap = "10px";
 
@@ -381,6 +383,35 @@
     var csvBtn = btn("Save .csv", function () { saveGulp("csv"); });
     [mdBtn, jsonBtn, htmlBtn, csvBtn].forEach(function (b) { b.classList.add("is-disabled"); save.appendChild(b); });
     container.appendChild(save);
+
+    /* Direct-write exports: pick a folder once (e.g. C:\SP\gulps) and every
+       export — all tabs — lands there instead of Downloads, so VS Code Live
+       Preview refreshes the moment a gulp is saved. The permission grant only
+       lasts one page-load (browser rule); re-pick after a refresh. */
+    var fsOk = typeof window.showDirectoryPicker === "function";
+    var dirBtn = btn("Set export folder", function () {
+      if (!fsOk) { log("This browser can't write to folders — exports will download instead."); return; }
+      window.showDirectoryPicker({ mode: "readwrite" }).then(function (h) {
+        exportDir = h; refreshDir();
+        log("Exports now write into “" + h.name + "”.");
+      }).catch(function () { /* picker cancelled */ });
+    });
+    var dlBtn = btn("Use downloads", function () { exportDir = null; refreshDir(); log("Exports download normally again."); });
+    var dirRow = el("div", "row"); dirRow.style.marginTop = "2px";
+    dirRow.appendChild(dirBtn); dirRow.appendChild(dlBtn);
+    container.appendChild(dirRow);
+    var dirNote = note(""); container.appendChild(dirNote);
+    function refreshDir() {
+      dirBtn.textContent = exportDir ? "Folder: " + exportDir.name : "Set export folder";
+      dlBtn.style.display = exportDir ? "" : "none";
+      dirNote.textContent = exportDir
+        ? "All exports (every tab) write into “" + exportDir.name + "” until page reload — keep the file open in VS Code Live Preview and it refreshes on every save."
+        : (fsOk ? "Optional: pick a folder (e.g. C:\\SP\\gulps) to write exports straight into your VS Code workspace."
+                : "Folder writes need Edge/Chrome — exports will use normal downloads.");
+    }
+    if (!fsOk) dirBtn.classList.add("is-disabled");
+    onExportDirChange = refreshDir;
+    refreshDir();
 
     var out = el("div"); container.appendChild(out);
 
@@ -884,6 +915,20 @@
     return lines.join("\r\n");
   }
   function downloadBlob(text, name, type) {
+    if (exportDir) {
+      var dir = exportDir;
+      dir.getFileHandle(name, { create: true })
+        .then(function (fh) { return fh.createWritable(); })
+        .then(function (w) { return w.write(text).then(function () { return w.close(); }); })
+        .then(function () { log("Wrote " + name + " into “" + dir.name + "”"); })
+        .catch(function (e) {
+          exportDir = null;
+          if (onExportDirChange) onExportDirChange();
+          log("Folder write failed (" + (e && e.message) + ") — downloading instead.");
+          downloadBlob(text, name, type);
+        });
+      return;
+    }
     var blob = new Blob([text], { type: type });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = name;
