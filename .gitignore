@@ -8,3 +8,6 @@ Thumbs.db
 # Node deps for the test harness
 node_modules/
 test/package-lock.json
+
+# MCP debug output
+logs/
