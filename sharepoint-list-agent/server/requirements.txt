@@ -1,0 +1,5 @@
+# SharePoint List Agent — server dependencies
+# The MCP Python SDK. Everything else (json, re, pathlib) is stdlib.
+# store.py / policy.py / test_agent.py have NO dependency on this — only the
+# stdio entry point (sharepoint_list_mcp.py) imports it.
+mcp>=1.2.0

@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Real SharePoint exports may contain tenant data / PII — never commit them.
+# Only the synthetic sample is tracked.
+config/exports/*.json
+!config/exports/sample-list.json

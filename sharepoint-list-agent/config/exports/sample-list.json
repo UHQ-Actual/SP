@@ -1,0 +1,38 @@
+{
+  "web": "https://usdol.sharepoint.com/sites/whd/mw/mwplanning",
+  "list": "Case Tracker",
+  "listId": "00000000-0000-0000-0000-000000000000",
+  "exportedAt": "2026-07-19T12:00:00.000Z",
+  "columns": [
+    { "name": "ID", "internal": "Id", "type": "Counter" },
+    { "name": "Title", "internal": "Title", "type": "Text" },
+    { "name": "Employer", "internal": "Employer", "type": "Text" },
+    { "name": "Status", "internal": "Status", "type": "Choice" },
+    { "name": "Investigator", "internal": "Investigator", "type": "User" },
+    { "name": "Contact Phone", "internal": "ContactPhone", "type": "Text" },
+    { "name": "Complainant SSN", "internal": "ComplainantSSN", "type": "Text" },
+    { "name": "Notes", "internal": "Notes", "type": "Note" }
+  ],
+  "items": [
+    {
+      "Id": 1,
+      "Title": "MW-2026-0007",
+      "Employer": "Acme Diner LLC",
+      "Status": "Open",
+      "Investigator": "Jane Doe <jane.doe@dol.gov>",
+      "Contact Phone": "202-555-0143",
+      "Complainant SSN": "123-45-6789",
+      "Notes": "Minimum wage complaint, case 4471203. Call back at (202) 555-0143."
+    },
+    {
+      "Id": 2,
+      "Title": "MW-2026-0011",
+      "Employer": "Bright Cleaners",
+      "Status": "In Review",
+      "Investigator": "Sam Lee <sam.lee@dol.gov>",
+      "Contact Phone": "301-555-0199",
+      "Complainant SSN": "987-65-4321",
+      "Notes": "Overtime issue at Bright Cleaners. Ref 5583002."
+    }
+  ]
+}
