@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "sharepoint-list": {
+      "type": "stdio",
+      "command": "C:\\SP\\sharepoint-list-agent\\server\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\SP\\sharepoint-list-agent\\server\\sharepoint_list_mcp.py"],
+      "env": {
+        "SPLA_EXPORT_DIR": "C:\\SP\\sharepoint-list-agent\\config\\exports"
+      }
+    }
+  }
+}

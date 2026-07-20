@@ -1,5 +1,4 @@
 {
-  "//": "Copy into your agent's MCP config. VS Code / GitHub Copilot: .vscode/mcp.json uses the `servers` key shown here. Claude Desktop uses `mcpServers` instead (same inner shape). Replace the absolute paths, or keep ${workspaceFolder} if your host expands it. python3 on Linux/WSL — on Windows hosts use python or an absolute interpreter path.",
   "servers": {
     "sharepoint-list": {
       "type": "stdio",

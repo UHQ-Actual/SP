@@ -73,16 +73,25 @@ to readable strings.
 - Keep the pure data logic dependency-free (separate module) so it is testable
   with plain `python3` (`python` on Windows); only `sharepoint_list_mcp.py` and
   `demo.py` import `mcp`.
+- The virtualenv belongs **inside `server/`**, next to `requirements.txt` —
+  `server/.venv/bin/python` on Linux, `server\.venv\Scripts\python.exe` on
+  Windows. The setup script and every MCP config must name that same path; a
+  venv at the project root is wrong.
 
 ## Layout
 
 ```
 browser/   read-list.js
 server/    sharepoint_list_mcp.py  store.py  policy.py  requirements.txt
-           test_agent.py  demo.py  graph_export.py
-config/    exports/  mcp.example.json
+           test_agent.py  demo.py  graph_export.py  .venv/   (git-ignored)
+config/    exports/  mcp.example.json  mcp.windows.json
 docs/      SPEC.md  WORKFLOW.md
+setup.ps1  update-sp.ps1
 ```
+
+MCP config files are validated by VS Code against a schema that knows only
+`servers` and `inputs`, so keep them free of documentation keys — explanatory
+prose belongs in `README.md` / `docs/WORKFLOW.md`, not in the shipped JSON.
 
 - `demo.py` — MCP stdio client: spawns the server and exercises all four tools
   end-to-end against whatever is in the export folder.
