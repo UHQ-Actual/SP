@@ -66,6 +66,16 @@ Verify the data logic without SharePoint or the `mcp` install:
 cd server && python test_agent.py
 ```
 
+See the **server** working end-to-end (real MCP stdio round-trip) against
+whatever is in `config/exports/` — ships working on the sample:
+```bash
+cd server
+python -m venv .venv || uv venv .venv      # uv if python-venv is unavailable
+.venv/bin/pip install mcp || uv pip install --python .venv/bin/python mcp
+.venv/bin/python demo.py                    # auto-picks the first export
+.venv/bin/python demo.py "My List"          # or target one
+```
+
 ## The tools
 
 | Tool | Purpose |

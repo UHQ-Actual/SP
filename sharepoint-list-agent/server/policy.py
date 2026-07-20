@@ -17,7 +17,9 @@ import re
 from typing import Any, List
 
 _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
-_PHONE = re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")
+# Lookarounds (not \b) so an optional leading "(" is consumed and mid-number
+# runs are not partially matched.
+_PHONE = re.compile(r"(?<!\d)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)")
 _LONGNUM = re.compile(r"\b\d{7,10}\b")
 
 

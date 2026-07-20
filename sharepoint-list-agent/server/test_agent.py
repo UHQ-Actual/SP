@@ -60,6 +60,8 @@ def main():
     blob = str(red)
     ok("ssn masked", "123-45-6789" not in blob)
     ok("phone masked", "202-555-0143" not in blob and "(202) 555-0143" not in blob)
+    ok("parenthesized phone fully masked (no stray paren)",
+       "([phone]" not in blob and "Call back at [phone]." in red["Notes"])
     ok("case-id masked", "4471203" not in blob)
     ok("non-sensitive text preserved", red["Employer"] == "Acme Diner LLC")
     ok("investigator name preserved", "Jane Doe" in blob)
