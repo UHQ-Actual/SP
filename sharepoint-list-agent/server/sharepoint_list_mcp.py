@@ -41,21 +41,33 @@ def _load():
 @mcp.tool()
 def sharepoint_list_status() -> Dict[str, Any]:
     """List which SharePoint List exports are available locally, with row and
-    column counts. Call this first to see what the agent can read. No arguments."""
+    column counts. Call this first to see what the agent can read. When several
+    exports share a list title (dated re-exports), every row but the newest —
+    by exportedAt, then file mtime — is marked shadowed: only the newest is what
+    the other tools read. No arguments."""
     exports = _load()
+    # Newest valid export per casefolded title; the rest get shadowed:True.
+    newest: Dict[str, Dict[str, Any]] = {}
+    for e in store.valid(exports):
+        t = str(e.get("list", "")).lower()
+        if t not in newest or store.newest_key(e) > store.newest_key(newest[t]):
+            newest[t] = e
     rows: List[Dict[str, Any]] = []
     for e in exports:
         if "_error" in e:
             rows.append({"file": e["_file"], "error": e["_error"]})
             continue
-        rows.append({
+        row = {
             "list": e.get("list"),
             "web": e.get("web"),
             "file": e["_file"],
             "columns": len(e.get("columns", [])),
             "items": len(e.get("items", [])),
             "exportedAt": e.get("exportedAt"),
-        })
+        }
+        if newest.get(str(e.get("list", "")).lower()) is not e:
+            row["shadowed"] = True
+        rows.append(row)
     return {
         "export_dir": str(EXPORT_DIR),
         "count": len(store.valid(exports)),
@@ -67,7 +79,8 @@ def sharepoint_list_status() -> Dict[str, Any]:
 @mcp.tool()
 def sharepoint_list_import(list: str) -> Dict[str, Any]:
     """Summarize one List's schema: its columns (display name, internal name,
-    type) and its row count.
+    type) and its row count. If several exports share the title, the newest
+    (by exportedAt, then file mtime) wins.
 
     Args:
         list: the List title or export filename (partial title also matches).
@@ -94,34 +107,45 @@ def sharepoint_list_items(
     offset: int = 0,
     redact: bool = True,
 ) -> Dict[str, Any]:
-    """Return rows from a List export. Redacted by default.
+    """Return rows from a List export. Redacted by default. When redact is true,
+    filtering (and total_matched) runs AFTER redaction, over the masked values —
+    the filter cannot probe raw SSNs / phones / case-ids. If several exports
+    share the list title, the newest (by exportedAt, then file mtime) wins.
 
     Args:
         list: List title or export filename.
         columns: optional subset of columns to return (display or internal names).
-        filter: case-insensitive substring matched across each row's values.
+        filter: case-insensitive substring matched within each row's fields.
         limit: max rows to return (0 = no limit). Default 50.
         offset: rows to skip, for paging. Default 0.
         redact: mask SSNs / phones / case-ids before returning. Default True.
     """
+    if limit < 0 or offset < 0:
+        return {"error": "limit and offset must be >= 0"}
     exports = _load()
     e = store.find(exports, list)
     if not e:
         return {"error": "No export found for %r" % list, "available": store.available(exports)}
 
-    matched = store.filter_items(e.get("items", []), filter)
+    # Redact BEFORE filtering so match counts can't act as an oracle on raw values.
+    base = [policy.redact_item(r) for r in e.get("items", [])] if redact else e.get("items", [])
+    matched = store.filter_items(base, filter)
     total = len(matched)
-    limit = max(0, int(limit))
-    offset = max(0, int(offset))
+    limit = int(limit)
+    offset = int(offset)
     page = matched[offset: offset + limit] if limit else matched[offset:]
 
-    keys = store.resolve_columns(e, columns) if columns else []
+    keys, unresolved = store.resolve_columns(e, columns or [])
+    if columns and not keys:
+        return {
+            "error": "no requested columns matched",
+            "unresolved": unresolved,
+            "available": [c["name"] for c in e.get("columns", [])],
+        }
     if keys:
-        page = store.project(page, ["Id"] + keys)
-    if redact:
-        page = [policy.redact_item(r) for r in page]
+        page = store.project(page, ["Id"] + [k for k in keys if k != "Id"])
 
-    return {
+    out = {
         "list": e.get("list"),
         "total_matched": total,
         "offset": offset,
@@ -129,6 +153,9 @@ def sharepoint_list_items(
         "redacted": bool(redact),
         "items": page,
     }
+    if unresolved:
+        out["unresolved"] = unresolved
+    return out
 
 
 @mcp.tool()
@@ -139,27 +166,34 @@ def sharepoint_list_related(
     redact: bool = True,
 ) -> Dict[str, Any]:
     """Rank a List's rows by textual relevance to a topic — e.g. paste an Outlook
-    subject line to find the List rows about the same matter.
+    subject line to find the List rows about the same matter. When redact is
+    true, ranking runs AFTER redaction: scores, matched tokens, and rows all
+    derive from the masked text, so the topic cannot probe raw SSNs / phones /
+    case-ids. If several exports share the list title, the newest (by
+    exportedAt, then file mtime) wins.
 
     Args:
         list: List title or export filename.
         topic: free text (subject line, keywords) to rank rows against.
-        top_k: how many top rows to return. Default 10.
+        top_k: how many top rows to return (0 = none). Default 10.
         redact: mask SSNs / phones / case-ids before returning. Default True.
     """
+    if top_k < 0:
+        return {"error": "top_k must be >= 0"}
     exports = _load()
     e = store.find(exports, list)
     if not e:
         return {"error": "No export found for %r" % list, "available": store.available(exports)}
 
-    ranked = store.rank_related(e.get("items", []), topic, top_k)
+    # Rank the redacted view so scores and matched tokens can't leak raw values.
+    base = [policy.redact_item(r) for r in e.get("items", [])] if redact else e.get("items", [])
+    ranked = store.rank_related(base, topic, top_k)
     if not ranked and not store.tokens(topic):
         return {"error": "topic produced no searchable terms", "list": e.get("list")}
 
     results = []
     for hit in ranked:
-        row = policy.redact_item(hit["row"]) if redact else hit["row"]
-        results.append({"score": hit["score"], "matched": hit["matched"], "row": row})
+        results.append({"score": hit["score"], "matched": hit["matched"], "row": hit["row"]})
 
     return {
         "list": e.get("list"),

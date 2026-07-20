@@ -21,10 +21,13 @@
 
   var USER_TYPES = { User: 1, UserMulti: 1 };
   var LOOKUP_TYPES = { Lookup: 1, LookupMulti: 1 };
-  var SYS_KEEP = { Title: 1, Created: 1, Modified: 1, Author: 1, Editor: 1 };
+  var SYS_KEEP = { Title: 1, Created: 1, Modified: 1, Author: 1, Editor: 1, FileLeafRef: 1 };
   var TYPE_SKIP = {
     Computed: 1, Attachments: 1, ContentType: 1, Guid: 1,
-    Threading: 1, WorkflowStatus: 1, WorkflowEventType: 1, Recurrence: 1
+    Threading: 1, WorkflowStatus: 1, WorkflowEventType: 1, Recurrence: 1,
+    // Multi-value managed metadata cannot be fetched via $select on /items
+    // (documented SharePoint REST limitation — the query 400s).
+    TaxonomyFieldTypeMulti: 1
   };
   var PAGE = 500;
   var MAX_RETRY = 5;
@@ -90,24 +93,31 @@
     if (Array.isArray(v) || (v && v.results)) return multi(v).map(person).filter(Boolean).join("; ");
     return person(v);
   }
-  function flattenLookup(v) {
+  function flattenLookup(v, show) {
     if (v == null) return "";
-    if (Array.isArray(v) || (v && v.results)) return multi(v).map(function (e) { return e && e.Title != null ? e.Title : e; }).filter(function (x) { return x !== "" && x != null; }).join("; ");
-    return v.Title != null ? v.Title : v;
+    function pick(e) {
+      if (e == null) return "";
+      return e[show] != null ? e[show] : (e.Title != null ? e.Title : "");
+    }
+    if (Array.isArray(v) || (v && v.results)) return multi(v).map(pick).filter(function (x) { return x !== "" && x != null; }).join("; ");
+    return pick(v);
   }
   function flattenScalar(type, v) {
     if (v == null) return "";
     if (type === "Boolean") return v ? "Yes" : "No";
     if (type === "URL" && typeof v === "object") return v.Description ? v.Description + " (" + v.Url + ")" : v.Url;
     if (type === "MultiChoice") return multi(v).join("; ");
+    if (type === "TaxonomyFieldType") return (v && v.Label) || "";
+    if (type === "Geolocation") return v && v.Latitude != null ? v.Latitude + ", " + v.Longitude : "";
+    if (typeof v === "object") return JSON.stringify(v); // never let a raw object land in items
     return v;
   }
 
   async function fields(w, title) {
     var url = w + "/_api/web/lists/getByTitle('" + escTitle(title) +
-      "')/fields?$select=Title,InternalName,TypeAsString,Hidden,CanBeDeleted&$top=500";
-    var j = await spFetch(url);
-    return (j.value || []).filter(function (f) {
+      "')/fields?$select=Title,InternalName,TypeAsString,Hidden,CanBeDeleted,LookupField&$top=500";
+    var all = await pageAll(url); // page: /fields can exceed 500 on wide lists
+    return all.filter(function (f) {
       if (f.Hidden) return false;
       if (String(f.InternalName || "").charAt(0) === "_") return false;
       if (TYPE_SKIP[f.TypeAsString]) return false;
@@ -136,7 +146,12 @@
     var sel = ["Id"], exp = [];
     scalars.forEach(function (f) { sel.push(f.InternalName); });
     users.forEach(function (f) { exp.push(f.InternalName); sel.push(f.InternalName + "/Title", f.InternalName + "/EMail"); });
-    lookups.forEach(function (f) { exp.push(f.InternalName); sel.push(f.InternalName + "/Title", f.InternalName + "/Id"); });
+    lookups.forEach(function (f) {
+      // Project the column the lookup actually shows (ShowField), not always Title.
+      f.showField = f.LookupField || "Title";
+      exp.push(f.InternalName);
+      sel.push(f.InternalName + "/" + f.showField, f.InternalName + "/Id");
+    });
 
     var base = w + "/_api/web/lists/getByTitle('" + escTitle(title) + "')/items";
     var full = base + "?$select=" + sel.join(",") + (exp.length ? "&$expand=" + exp.join(",") : "") + "&$top=" + PAGE;
@@ -150,14 +165,18 @@
       var flatSel = ["Id"].concat(scalars.map(function (f) { return f.InternalName; }))
         .concat(users.map(function (f) { return f.InternalName + "Id"; }))
         .concat(lookups.map(function (f) { return f.InternalName + "Id"; }));
-      raw = await pageAll(base + "?$select=" + flatSel.join(",") + "&$top=" + PAGE);
+      try {
+        raw = await pageAll(base + "?$select=" + flatSel.join(",") + "&$top=" + PAGE);
+      } catch (e2) {
+        throw new Error("Read of '" + title + "' failed — expanded query: " + e.message + " | flat fallback: " + e2.message);
+      }
     }
 
     var items = raw.map(function (r) {
       var o = { Id: r.Id };
       scalars.forEach(function (f) { o[f.Title] = flattenScalar(f.TypeAsString, r[f.InternalName]); });
       users.forEach(function (f) { o[f.Title] = expanded ? flattenUser(r[f.InternalName]) : (r[f.InternalName + "Id"] != null ? "id:" + r[f.InternalName + "Id"] : ""); });
-      lookups.forEach(function (f) { o[f.Title] = expanded ? flattenLookup(r[f.InternalName]) : (r[f.InternalName + "Id"] != null ? "id:" + r[f.InternalName + "Id"] : ""); });
+      lookups.forEach(function (f) { o[f.Title] = expanded ? flattenLookup(r[f.InternalName], f.showField) : (r[f.InternalName + "Id"] != null ? "id:" + r[f.InternalName + "Id"] : ""); });
       return o;
     });
 

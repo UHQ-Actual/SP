@@ -67,15 +67,24 @@ Combined with the agent's Outlook access, the pattern is: read the mail subject
 
 ## 5. Verify (no SharePoint needed)
 
+`python3` throughout — `python` on Windows.
+
 ```bash
-cd server && python test_agent.py     # exercises store + policy on the sample
-python -m py_compile sharepoint_list_mcp.py store.py policy.py
+cd server && python3 test_agent.py    # exercises store + policy on the sample
+python3 -m py_compile sharepoint_list_mcp.py store.py policy.py
+.venv/bin/python demo.py              # real MCP stdio round-trip (venv from the README Quickstart)
 ```
 
 ## Redaction
 
 Rows returned by `sharepoint_list_items` and `sharepoint_list_related` are
-redacted by default. To see raw values for a trusted local task, pass
-`redact: false` on that call. To change what gets masked, edit `_RULES` in
-`server/policy.py` — it's the whole policy surface, applied to every string in
-every returned row.
+redacted by default: SSNs (including spaced/dotted forms), EINs, grouped
+credit-card numbers, US phone numbers, and 7+-digit id runs are masked to
+their last 4; dates, dollar amounts, and decimals are preserved. Emails and
+personal names are deliberately **not** masked — cross-referencing people
+between Outlook and List rows is the tool's purpose. International phone
+formats are not covered; redaction is best-effort pattern matching, not DLP.
+
+To see raw values for a trusted local task, pass `redact: false` on that call.
+To change what gets masked, edit `_RULES` in `server/policy.py` — it's the
+whole policy surface, applied to every string in every returned row.

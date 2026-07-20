@@ -30,21 +30,25 @@ def tokens(s: str) -> List[str]:
 
 def load_exports(export_dir) -> List[Dict[str, Any]]:
     """Read every *.json in export_dir. Bad/foreign files come back tagged with
-    an `_error` key rather than raising, so one bad file never blinds the rest."""
+    an `_error` key rather than raising, so one bad file never blinds the rest.
+    utf-8-sig tolerates the BOM Windows editors like to prepend; every entry
+    (including errored ones) carries `_mtime` for newest-export tie-breaking."""
     out: List[Dict[str, Any]] = []
     p = Path(export_dir)
     if not p.is_dir():
         return out
     for fp in sorted(p.glob("*.json")):
+        mtime = fp.stat().st_mtime
         try:
-            data = json.loads(fp.read_text(encoding="utf-8"))
+            data = json.loads(fp.read_text(encoding="utf-8-sig"))
         except Exception as e:  # noqa: BLE001 - report, don't crash the scan
-            out.append({"_file": fp.name, "_error": "parse error: %s" % e})
+            out.append({"_file": fp.name, "_error": "parse error: %s" % e, "_mtime": mtime})
             continue
         if not isinstance(data, dict) or "items" not in data:
-            out.append({"_file": fp.name, "_error": "not a list export (missing 'items')"})
+            out.append({"_file": fp.name, "_error": "not a list export (missing 'items')", "_mtime": mtime})
             continue
         data["_file"] = fp.name
+        data["_mtime"] = mtime
         out.append(data)
     return out
 
@@ -53,20 +57,28 @@ def valid(exports: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [e for e in exports if "_error" not in e]
 
 
+def newest_key(e: Dict[str, Any]):
+    """Sort key for picking the newest of several exports of the same list:
+    exportedAt first, file mtime as the fallback."""
+    return (e.get("exportedAt") or "", e.get("_mtime") or 0)
+
+
 def find(exports: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
-    """Match by exact list title, then exact filename, then partial title."""
+    """Match by exact list title, then exact filename, then partial title.
+    When a tier matches several exports (dated re-exports of the same list),
+    the newest wins — by exportedAt, then file mtime."""
     good = valid(exports)
     nl = (name or "").strip().lower()
-    for e in good:
-        if str(e.get("list", "")).lower() == nl:
-            return e
+    hits = [e for e in good if str(e.get("list", "")).lower() == nl]
+    if hits:
+        return max(hits, key=newest_key)
     for e in good:
         f = str(e["_file"]).lower()
         if f == nl or f == nl + ".json":
             return e
-    for e in good:
-        if nl and nl in str(e.get("list", "")).lower():
-            return e
+    hits = [e for e in good if nl and nl in str(e.get("list", "")).lower()]
+    if hits:
+        return max(hits, key=newest_key)
     return None
 
 
@@ -74,26 +86,36 @@ def available(exports: List[Dict[str, Any]]) -> List[str]:
     return [str(e.get("list", e.get("_file"))) for e in valid(exports)]
 
 
-def resolve_columns(export: Dict[str, Any], requested) -> List[str]:
-    """Map requested column tokens (display OR internal name) to the item keys."""
+def resolve_columns(export: Dict[str, Any], requested):
+    """Map requested column tokens (display OR internal name) to the actual
+    item keys. The counter column is special-cased: 'id'/'ID'/'Id' (any case)
+    resolve to 'Id', the key the exporters actually write, not the 'ID'
+    display name. Returns (keys, unresolved) — unresolved keeps the original
+    spelling of requested names that matched nothing."""
     keymap: Dict[str, str] = {}
     for c in export.get("columns", []):
         nm = c.get("name")
         keymap[str(c.get("name", "")).lower()] = nm
         keymap[str(c.get("internal", "")).lower()] = nm
+    keymap["id"] = "Id"  # counter column's item key is 'Id', whatever the display name says
     out: List[str] = []
+    unresolved: List[str] = []
     for r in requested or []:
         k = keymap.get(str(r).lower())
-        if k and k not in out:
-            out.append(k)
-    return out
+        if k:
+            if k not in out:
+                out.append(k)
+        else:
+            unresolved.append(r)
+    return out, unresolved
 
 
 def filter_items(items: List[dict], needle: str) -> List[dict]:
     if not needle:
         return list(items)
     nl = needle.lower()
-    return [r for r in items if nl in " ".join(str(v) for v in r.values()).lower()]
+    # Per-field match: a needle can't span two columns, and None never matches.
+    return [r for r in items if any(nl in str(v).lower() for v in r.values() if v is not None)]
 
 
 def project(items: List[dict], keys: List[str]) -> List[dict]:
@@ -110,10 +132,10 @@ def rank_related(items: List[dict], topic: str, top_k: int = 10) -> List[dict]:
         return []
     scored: List[dict] = []
     for r in items:
-        rset = set(tokens(" ".join(str(v) for v in r.values())))
+        rset = set(tokens(" ".join(str(v) for v in r.values() if v is not None)))
         matched = sorted(terms & rset)
         if not matched:
             continue
         scored.append({"score": round(len(matched) / len(terms), 3), "matched": matched, "row": r})
     scored.sort(key=lambda x: (-x["score"], -len(x["matched"])))
-    return scored[: max(1, top_k)]
+    return scored[: max(0, top_k)]
